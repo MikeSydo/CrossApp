@@ -32,7 +32,7 @@ CrossApp/
 - self-contained версія:
 `dotnet publish src/Cli -c Release -r win-x64 --self-contained true`
 ## Середовище
-.NET SDK 10.0, Windows 11 x64 / Ubuntu 24.04 x64
+.NET SDK 10.0, Windows 11 x64
 
 ## Таблиця RID
 | RID |                                     Режим | Розмір publish | Потрібен runtime |
@@ -42,3 +42,24 @@ CrossApp/
 | win-x64 |   self-contained з PublishSingleFile=true |   70,1514854431152 MB |               ні |
 | win-x64 |      self-contained з PublishTrimmed=true |   19,1592626571655 MB |               ні |
 | linux-x64 |                            self-contained |   73,939427 MB |               ні |
+
+## Інваріанти доменної моделі
+
+### Order
+
+- Ідентифікатор замовлення (`Id`) не може бути порожнім. Перевіряється в `Order.Create`; порушення спричиняє `ArgumentException`.
+- Ідентифікатор клієнта (`CustomerId`) не може бути порожнім. Перевіряється в `Order.Create`; порушення спричиняє `ArgumentException`.
+- До підтвердженого замовлення не можна додавати рядки. Перевіряється в `Order.AddLine`; порушення спричиняє `InvalidOperationException`.
+- Порожнє замовлення не можна підтвердити. Перевіряється в `Order.Confirm`; порушення спричиняє `InvalidOperationException`.
+- Замовлення не можна підтвердити повторно. Перевіряється в `Order.Confirm`; порушення спричиняє `InvalidOperationException`.
+
+### OrderLine
+
+- Ідентифікатор товару (`ProductId`) не може бути порожнім. Перевіряється в `OrderLine.Create`; порушення спричиняє `ArgumentException`.
+- Назва товару (`Name`) не може бути порожньою. Перевіряється в `OrderLine.Create`; порушення спричиняє `ArgumentException`.
+- Ціна (`Price`) не може бути від’ємною; нульова ціна дозволена. Перевіряється в `OrderLine.Create`; порушення спричиняє `ArgumentOutOfRangeException`.
+- Кількість (`Quantity`) має бути більшою за нуль. Перевіряється в `OrderLine.Create`; порушення спричиняє `ArgumentOutOfRangeException`.
+
+### Відновлення з DTO
+
+`Order.FromDto` відновлює замовлення через `Create`, `AddLine` і, за потреби, `Confirm`. Тому дані з DTO проходять ті самі перевірки, що й під час звичайного створення замовлення.

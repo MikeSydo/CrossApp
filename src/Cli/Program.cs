@@ -1,69 +1,69 @@
-﻿using Core.Dto;
-using Core.Import;
+﻿using System.Text;
+using Core.Domain;
 
-string path = args.Length > 0
-    ? args[0]
-    : Path.Combine("data", "sample.csv");
+Console.OutputEncoding = Encoding.UTF8;
 
-if (!File.Exists(path))
-{
-    Console.WriteLine($"Файл не знайдено: {Path.GetFullPath(path)}");
-    return 1;
-}
+Console.WriteLine("=== Сценарій 1: успіх ===");
 
-ImportResult<ImportRowDto> result = Path.GetExtension(path).ToLowerInvariant() switch
-{
-    ".csv" => CsvImporter.Load(path),
-    ".json" => JsonImporter.Load(path),
-    var extension => throw new NotSupportedException(
-        $"Непідтримуваний формат '{extension}'. Використовуйте .csv або .json.")
-};
+Order order = Order.Create("O-001", "C-001");
 
-Console.WriteLine($"Шлях файлу: {path}");
+order.AddLine("P-001", "Клавіатура", 1200m, 2);
+order.AddLine("P-002", "Миша", 600m, 1);
 
-int accepted = result.Items.Count;
-int skipped = result.Errors.Count;
-int total = accepted + skipped;
+Console.WriteLine($"Замовлення: {order.Id}");
+Console.WriteLine($"Клієнт: {order.CustomerId}");
 
-decimal errorPercent = total == 0
-    ? 0
-    : (decimal)skipped / total * 100;
+foreach (OrderLine line in order.Lines)
+    Console.WriteLine($"  {line.Name}: {line.Quantity} × {line.Price} = {line.Subtotal} грн");
 
-Console.WriteLine(
-    $"Усього: {total} | " +
-    $"Прийнято: {accepted} | " +
-    $"Пропущено: {skipped} | " +
-    $"Помилок: {errorPercent:F2}%");
+Console.WriteLine($"Загальна сума: {order.Total} грн");
+
+order.Confirm();
+Console.WriteLine($"Підтверджено: {order.IsConfirmed}");
 
 Console.WriteLine();
+Console.WriteLine("=== Сценарій 2: порушення інваріантів ===");
 
-foreach (ImportRowDto item in result.Items)
-{
-    switch (item)
+TryDo("створення замовлення з порожнім id", () => { Order draft = Order.Create("", "C-002"); });
+TryDo("створення замовлення з порожнім customerId", () => { Order draft = Order.Create("O-002", ""); });
+TryDo("додавання рядка після підтвердження", () => order.AddLine("P-004", "Монітор", 8000m, 1));
+TryDo("підтвердження порожнього замовлення",
+    () =>
     {
-        case ProductDto product:
-            Console.WriteLine(
-                $"Товар   | {product.Id,-6} | " +
-                $"{product.Name,-30} | {product.Price,10:F2}");
-            break;
+        Order emptyOrder = Order.Create("O-003", "C-003");
+        emptyOrder.Confirm();
+    });
+TryDo("повторне підтвердження", () => order.Confirm());
 
-        case CustomerDto customer:
-            Console.WriteLine(
-                $"Клієнт  | {customer.Id,-6} | " +
-                $"{customer.FullName,-30} | {customer.Email}");
-            break;
+Console.WriteLine();
+TryDo("додавання порожнього id товару", () => order.AddLine("", "Монітор", 8000m, 1));
+TryDo("додавання товару з порожнім name", () => order.AddLine("P-003", "", 500m, 3));
+TryDo("товар з від'ємною ціною",
+    () =>
+    {
+        Order draft = Order.Create("O-002", "C-002");
+        draft.AddLine("P-004", "Навушники", -900m, 1);
+    });
+TryDo("нульова кількість товару",
+    () =>
+    {
+        Order draft = Order.Create("O-002", "C-002");
+        draft.AddLine("P-004", "Навушники", 900m, 0);
+    });
+
+static void TryDo(string title, Action action)
+{
+    try
+    {
+        action();
+        Console.WriteLine($"{title}: виняток НЕ спрацював - перевір інваріант!");
+    }
+    catch (ArgumentException ex)
+    {
+        Console.WriteLine($"{title}: {ex.GetType().Name} - {ex.Message}");
+    }
+    catch (InvalidOperationException ex)
+    {
+        Console.WriteLine($"{title}: {ex.GetType().Name} - {ex.Message}");
     }
 }
-
-if (result.Errors.Count > 0)
-{
-    Console.WriteLine();
-    Console.WriteLine($"Пропущено рядків: {result.Errors.Count}");
-
-    foreach (string error in result.Errors)
-    {
-        Console.WriteLine($"! {error}");
-    }
-}
-
-return 0;
