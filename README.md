@@ -22,7 +22,10 @@ CrossApp/
 ## Запуск
 `dotnet build` 
 
-`dotnet run --project src/Cli` 
+`dotnet run --project src/Cli`
+
+- `--file` - запуск файлового сховища
+- `--cache` - обгортка кешованого сховища над IOrderStore
 
 ## Публікація
 - framework-dependent версія:
