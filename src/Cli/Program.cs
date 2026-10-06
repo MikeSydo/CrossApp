@@ -45,7 +45,7 @@ foreach (var order in found)
 
 Console.WriteLine("\n=== Створення через фабрику ===");
 var store1 = StoreFactory.Create(args);
-var service1 = new OrderService(store);
+var service1 = new OrderService(store1);
 Console.WriteLine($"Сховище: {store1.GetType().Name}");
 Console.WriteLine($"Сервіс: {service1.GetType().Name}");
 
