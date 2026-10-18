@@ -1,86 +1,134 @@
-﻿using System.Text;
+using System.Diagnostics;
+using System.Text;
 using Cli;
+using Core;
 using Core.Abstractions;
 using Core.Domain;
-using Core.Events;
+using Core.Reports;
 using Core.Services;
 
 Console.OutputEncoding = Encoding.UTF8;
 
 IOrderStore store = StoreFactory.Create(args);
-INotificationSink fileSink = new FileSink(Path.Combine("logs", "app.log"));
-var service = new OrderService(store, fileSink);
-Console.WriteLine($"Сховище: {store.GetType().Name}");
-
 var logPath = Path.Combine(AppContext.BaseDirectory, "logs", "app.log");
 Directory.CreateDirectory(Path.GetDirectoryName(logPath)!);
+INotificationSink sink = new FileSink(logPath);
+var service = new OrderService(store, sink);
 
-void OnOrderChanged(object? sender, OrderChangedEventArgs e)
+var items = service.All();
+var customers = SampleData.Customers().ToList();
+var command = args.FirstOrDefault(a => !a.StartsWith("--")) ?? "report-top";
+
+switch (command)
 {
-    string line = $"{e.At:HH:mm:ss} {e.Kind,-14} {e.Id} рядків: {e.LinesCount,2} -> сума {e.Total}";
-    Console.WriteLine(line);
-    File.AppendAllText(logPath, line + Environment.NewLine);
+    case "report-top":
+        Print(ReportService.TopByTotal(items, 5));
+        break;
+
+    case "report-low":
+        Print(ReportService.LowTotal(items, 1000m));
+        break;
+
+    case "report-groups":
+        foreach (var g in ReportService.ByStatus(items))
+        {
+            Console.WriteLine($" {g.Key,-12} замовлень: {g.Count,3} сумарно: {g.TotalAmount,10:F2} грн");
+        }
+        break;
+
+    case "report-query-syntax":
+        Console.WriteLine("=== Звіт ByStatus через Query Syntax (from ... group ... into) ===");
+        foreach (var g in ReportService.ByStatusQuerySyntax(items))
+        {
+            Console.WriteLine($" {g.Key,-12} замовлень: {g.Count,3} сумарно: {g.TotalAmount,10:F2} грн");
+        }
+        break;
+
+    case "report-sum":
+        var t = ReportService.Totals(items);
+        Console.WriteLine($" позицій {t.Items}, всього {t.Total:F2}, середнє {t.Average:F2}, макс {t.Max:F2}");
+        break;
+
+    case "report-join":
+        Console.WriteLine("=== GroupJoin (Клієнти та Замовлення) ===");
+        Console.WriteLine($" {"Id",-6} {"Ім'я клієнта",-20} {"Замовлень",10} {"Сума покупок (грн)",20}");
+        Console.WriteLine(new string('-', 60));
+        foreach (var c in ReportService.CustomerOrdersReport(customers, items))
+        {
+            Console.WriteLine($" {c.CustomerId,-6} {c.CustomerName,-20} {c.OrdersCount,10} {c.TotalSpent,20:F2}");
+        }
+        break;
+
+    case "benchmark":
+        RunBenchmark();
+        break;
+
+    case "demo-deferred":
+        RunDeferredExecutionDemo(service);
+        break;
+
+    default:
+        Console.WriteLine("Доступні команди: report-top | report-low | report-groups | report-query-syntax | report-sum | report-join | benchmark | demo-deferred");
+        break;
 }
 
-int changes = 0;
-service.Changed += OnOrderChanged;
-service.Changed += (_, _) => changes++;
-
-Console.WriteLine("\n=== Успішні операції (події) ===");
-Order created = service.CreateOrder("C-016");
-service.AddLine(created.Id, "P-0", "Монітор", 1200, 2);
-service.AddLine(created.Id, "P-1", "Клавіатура", 800, 1);
-service.ConfirmOrder(created.Id);
-Console.WriteLine($"Подій отримано: {changes}");
-
-Console.WriteLine("\n=== Сценарії відмови (подій НЕ має бути) ===");
-int before = changes;
-TryDo("Порожній customerId", () => service.CreateOrder(""));
-TryDo("Невідомий orderId", () => service.AddLine("1111", "P-0", "Монітор", 1200, 2));
-TryDo("Порожній productId", () => service.AddLine(created.Id, "", "Монітор", 1200, 2));
-TryDo("Від'ємна кількість", () => service.AddLine(created.Id, "P-0", "Монітор", 1200, -1));
-TryDo("Повторне підтвердження замовлення", () => service.ConfirmOrder(created.Id));
-Console.WriteLine($"Нових подій після відмов: {changes - before}");
-
-Console.WriteLine("\n=== Відписка (-=) ===");
-service.Changed -= OnOrderChanged;
-Order silent = service.CreateOrder("C-017");
-service.AddLine(silent.Id, "P-2", "Миша", 400, 3);
-Console.WriteLine($"Подій отримано: {changes}");
-
-Console.WriteLine("\n=== Пошук за делегатом (Func) ===");
-IReadOnlyList<Order> found = service.Search(o => o.Total > 10000);
-foreach (var o in found)
-    Console.WriteLine($" {o.Id} {o.CustomerId,-10} сума {o.Total}");
-
-Console.WriteLine($"\nЛог: {logPath}");
-
-var skipped = new List<string>();
-int imported = service.ImportFromLines([
-    "C-100;P-0;Монітор;1200;2",
-    "C-101;P-1;Клавіатура;800;1",
-    "поганий;рядок;з;малою;кількістю;полів",
-    "C-102;P-2;Миша;400;3"
-], skipped.Add);
-
-Console.WriteLine($"Імпортовано: {imported}");
-Console.WriteLine($"Пропущено: {skipped.Count}");
-foreach (var s in skipped)
-    Console.WriteLine(s);
-
-static void TryDo(string title, Action action)
+static void Print(IReadOnlyList<OrderReportLine> lines)
 {
-    try
+    Console.WriteLine($" {"Id",-8} {"CustomerId",-12} {"Сума (грн)",12} {"Статус",-12} {"Позицій",8}");
+    Console.WriteLine(new string('-', 56));
+    foreach (var l in lines)
     {
-        action();
-        Console.WriteLine($"{title}: виняток НЕ спрацював - перевір інваріант!");
+        Console.WriteLine($" {l.Id,-8} {l.CustomerId,-12} {l.Total,12:F2} {l.Status,-12} {l.LinesCount,8}");
     }
-    catch (ArgumentException ex)
-    {
-        Console.WriteLine($"{title}: {ex.GetType().Name} - {ex.Message}");
-    }
-    catch (InvalidOperationException ex)
-    {
-        Console.WriteLine($"{title}: {ex.GetType().Name} - {ex.Message}");
-    }
+}
+
+static void RunDeferredExecutionDemo(OrderService service)
+{
+    Console.WriteLine("=== Демонстрація відкладеного виконання (Deferred Execution) ===");
+    var source = service.All().ToList();
+
+    var query = source.Where(o => o.Total < 1000m); // запит побудовано, не виконано
+    Console.WriteLine($"Малих замовлень (< 1000 грн) до змін: {query.Count()}");
+
+    var newOrder = Order.Create("O-TMP01", "C-TMP");
+    newOrder.AddLine("P-004", "USB-кабель", 180m, 1);
+    source.Add(newOrder);
+
+    Console.WriteLine($"Малих замовлень після змін: {query.Count()}"); // число інше
+
+    var snapshot = query.ToList(); // результат зафіксовано
+    source.Clear();
+
+    Console.WriteLine($"У знімку лишилось: {snapshot.Count}"); // не змінюється
+}
+
+static void RunBenchmark()
+{
+    const int count = 100_000;
+    Console.WriteLine($"Генерація {count:N0} замовлень для бенчмарку...");
+    var data = SampleData.GenerateOrders(count).ToList();
+
+    ReportService.PipelineStreamed(data.Take(100));
+    ReportService.PipelineWithIntermediateToList(data.Take(100));
+
+    // Потоковий (без ToList посередині)
+    GC.Collect();
+    GC.WaitForPendingFinalizers();
+    GC.Collect();
+    var sw1 = Stopwatch.StartNew();
+    var res1 = ReportService.PipelineStreamed(data);
+    sw1.Stop();
+
+    // ВЗ проміжними ToList()
+    GC.Collect();
+    GC.WaitForPendingFinalizers();
+    GC.Collect();
+    var sw2 = Stopwatch.StartNew();
+    var res2 = ReportService.PipelineWithIntermediateToList(data);
+    sw2.Stop();
+
+    Console.WriteLine("\n=== Результати вимірювання Stopwatch (100 000 записів) ===");
+    Console.WriteLine($"1. Без ToList у середині ланцюжка:  {sw1.ElapsedMilliseconds,5} мс ({sw1.ElapsedTicks,9:N0} тіків)");
+    Console.WriteLine($"2. З проміжними ToList() у середині: {sw2.ElapsedMilliseconds,5} мс ({sw2.ElapsedTicks,9:N0} тіків)");
+    Console.WriteLine($"Різниця: варіант без ToList швидший приблизно у {(double)sw2.ElapsedTicks / sw1.ElapsedTicks:F2} рази");
 }
