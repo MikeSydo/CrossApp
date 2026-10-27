@@ -12,50 +12,63 @@ CrossApp/
 ├── README.md
 ├── data/
 │   └── orders.json
-└── src/
-    ├── Cli/
-    │   ├── Cli.csproj           
-    │   ├── Program.cs
-    │   └── StoreFactory.cs
-    └── Core/
-        ├── Core.csproj
-        ├── EnvironmentInfo.cs
-        ├── SampleData.cs
-        ├── Abstractions/
-        │   ├── INotificationSink.cs
-        │   └── IOrderStore.cs
-        ├── Domain/
-        │   ├── Order.cs
-        │   ├── OrderLine.cs
-        │   └── OrderStatus.cs
-        ├── Dto/
-        │   ├── CustomerDto.cs
-        │   ├── ImportResult.cs
-        │   ├── ImportRowDto.cs
-        │   ├── OrderDto.cs
-        │   ├── OrderLineDto.cs
-        │   └── ProductDto.cs
-        ├── Events/
-        │   ├── OrderChangedEventArgs.cs
-        │   └── OrderChangeKind.cs
-        ├── Import/
-        │   ├── CsvImporter.cs
-        │   ├── JsonImporter.cs
-        │   └── OrderImporter.cs
-        ├── Reports/
-        │   ├── CustomerOrdersSummary.cs
-        │   ├── GroupSummary.cs
-        │   ├── LinqExtensions.cs
-        │   ├── OrderReportLine.cs
-        │   └── ReportService.cs
-        ├── Services/
-        │   ├── ConsoleSink.cs
-        │   ├── FileSink.cs
-        │   └── OrderService.cs
-        └── Storage/
-            ├── CachingOrderStore.cs
-            ├── FileOrderStore.cs
-            └── InMemoryOrderStore.cs
+├── src/
+│   ├── Cli/
+│   │   ├── Cli.csproj           
+│   │   ├── Program.cs
+│   │   └── StoreFactory.cs
+│   └── Core/
+│       ├── Core.csproj
+│       ├── DomainException.cs                [НОВЕ: бізнес-винятки]
+│       ├── EnvironmentInfo.cs
+│       ├── SampleData.cs
+│       ├── Abstractions/
+│       │   ├── ICatalogImporter.cs           [НОВЕ: сумісний контракт імпорту]
+│       │   ├── INotificationSink.cs
+│       │   ├── IOrderImporter.cs             [НОВЕ: асинхронний контракт імпорту]
+│       │   └── IOrderStore.cs
+│       ├── Domain/
+│       │   ├── Order.cs                      [ЗМІНЕНО: DomainException для бізнес-правил]
+│       │   ├── OrderLine.cs
+│       │   └── OrderStatus.cs
+│       ├── Dto/
+│       │   ├── CustomerDto.cs
+│       │   ├── ImportResult.cs
+│       │   ├── ImportRowDto.cs
+│       │   ├── OrderDto.cs
+│       │   ├── OrderLineDto.cs
+│       │   └── ProductDto.cs
+│       ├── Events/
+│       │   ├── OrderChangedEventArgs.cs
+│       │   └── OrderChangeKind.cs
+│       ├── Import/
+│       │   ├── CsvImporter.cs
+│       │   ├── JsonImporter.cs
+│       │   └── OrderImporter.cs
+│       ├── Reports/
+│       │   ├── CustomerOrdersSummary.cs
+│       │   ├── GroupSummary.cs
+│       │   ├── LinqExtensions.cs
+│       │   ├── OrderReportLine.cs
+│       │   └── ReportService.cs
+│       ├── Services/
+│       │   ├── CatalogService.cs             [НОВЕ: сумісна обгортка сервісу]
+│       │   ├── ConsoleSink.cs
+│       │   ├── FileSink.cs
+│       │   └── OrderService.cs               [ЗМІНЕНО: ImportAsync, ImportStreamAsync]
+│       └── Storage/
+│           ├── CachingOrderStore.cs
+│           ├── FileOrderStore.cs
+│           ├── InMemoryOrderStore.cs
+│           ├── JsonCatalogImporter.cs        [НОВЕ: async JSON імпортер]
+│           └── JsonOrderImporter.cs          [НОВЕ: async читання та IAsyncEnumerable]
+└── tests/
+    └── Core.Tests/                           [НОВЕ: проєкт xUnit unit-тестів]
+        ├── Core.Tests.csproj
+        ├── CatalogServiceTests.cs
+        ├── ImportTests.cs
+        ├── ReportServiceTests.cs
+        └── TestData.cs
 ```
 
 ## Запуск
@@ -63,16 +76,18 @@ CrossApp/
 
 `dotnet run --project src/Cli`
 
-- `--file` - запуск файлового сховища
+- `--file` - запуск асинхронного імпорту замовлень (або використання файлового сховища для звітів)
 - `--cache` - обгортка кешованого сховища над IOrderStore
+- `--stream` - асинхронний потоковий імпорт через `IAsyncEnumerable<Order>`
+- `--timeout [сек]` - демонстрація скасування за таймаутом (за замовчуванням 1 мс або задана кількість секунд)
 
 ## Публікація
 - framework-dependent версія:
 `dotnet publish src/Cli -c Release -r win-x64 --self-contained false`
 
-
 - self-contained версія:
 `dotnet publish src/Cli -c Release -r win-x64 --self-contained true`
+
 ## Середовище
 .NET SDK 10.0, Windows 11 x64
 
@@ -91,9 +106,10 @@ CrossApp/
 
 - Ідентифікатор замовлення (`Id`) не може бути порожнім. Перевіряється в `Order.Create`; порушення спричиняє `ArgumentException`.
 - Ідентифікатор клієнта (`CustomerId`) не може бути порожнім. Перевіряється в `Order.Create`; порушення спричиняє `ArgumentException`.
-- До підтвердженого замовлення не можна додавати рядки. Перевіряється в `Order.AddLine`; порушення спричиняє `InvalidOperationException`.
-- Порожнє замовлення не можна підтвердити. Перевіряється в `Order.Confirm`; порушення спричиняє `InvalidOperationException`.
-- Замовлення не можна підтвердити повторно. Перевіряється в `Order.Confirm`; порушення спричиняє `InvalidOperationException`.
+- До підтвердженого замовлення не можна додавати рядки. Перевіряється в `Order.AddLine`; порушення бізнес-правила спричиняє `DomainException` («Замовлення вже підтверджено»).
+- Порожнє замовлення не можна підтвердити. Перевіряється в `Order.Confirm`; порушення спричиняє `DomainException` («Замовлення не має рядків»).
+- Замовлення не можна підтвердити повторно. Перевіряється в `Order.Confirm`; порушення спричиняє `DomainException`.
+- Підтверджене замовлення не можна скасувати. Перевіряється в `Order.Cancel`; порушення спричиняє `DomainException`.
 
 ### OrderLine
 
@@ -104,7 +120,7 @@ CrossApp/
 
 ### Відновлення з DTO
 
-`Order.FromDto` відновлює замовлення через `Create`, `AddLine` і, за потреби, `Confirm`. Тому дані з DTO проходять ті самі перевірки, що й під час звичайного створення замовлення.
+`Order.FromDto` відновлює замовлення через `Create`, `AddLine` і, за потреби, `Confirm`. Дані проходять ті самі перевірки, що й під час створення замовлення. У разі некоректних даних імпортер обгортає виняток у `DomainException` із зазначенням номера запису (`$"Запис {i + 1}: {ex.Message}"`).
 
 ## Звіти LINQ
 
@@ -114,40 +130,5 @@ CrossApp/
 - `dotnet run --project src/Cli -f net10.0 -- report-groups` - групування замовлень за статусом (`Draft`, `Confirmed`, `Cancelled`) з підрахунком кількості та суми.
 - `dotnet run --project src/Cli -f net10.0 -- report-sum` - агреговані показники (кількість, загальна сума, середній чек, максимум).
 - `dotnet run --project src/Cli -f net10.0 -- demo-deferred` - демонстрація відкладеного виконання запитів.
-- `dotnet run --project src/Cli -f net10.0 -- report-join` - GroupJoin двох колекцій (Клієнти та Замовлення)
-
-### Відкладене виконання (Deferred Execution)
-
-Оператор фільтрації `Where` у LINQ to Objects використовує відкладене виконання: у момент створення виразу (`var query = source.Where(...)`) обробка колекції ще не розпочинається, а лише конструюється запит. Реальне виконання запиту відбувається щоразу, коли викликається термінальний оператор (наприклад, `Count()`, `ToList()`) або виконується перебір через `foreach`.
-
-Через це два виклики `query.Count()` у демонстраційному сценарії повертають різні значення (спочатку 6, а після додавання нового замовлення - 7): під час другого виклику `Count()` запит повторно обчислюється над уже модифікованою колекцією `source`. На відміну від цього, виклик `ToList()` одразу матеріалізує поточні результати у пам'яті: сформований об'єкт `snapshot` зафіксував стан на момент виклику, тому після наступного очищення джерела `source.Clear()` у ньому незмінно залишилися всі 7 записів.
-
-### Порівняння Query Syntax та Method Syntax
-Реалізовано звіт групування замовлень за статусом у двох еквівалентних формах:
-
-**Method Syntax (`ByStatus`):**
-```csharp
-source
-    .GroupBy(o => o.Status.ToString(), StringComparer.OrdinalIgnoreCase)
-    .Select(g => new GroupSummary(g.Key, g.Count(), g.Sum(o => o.Total)))
-    .OrderByDescending(s => s.TotalAmount)
-    .ToList();
-```
-
-**Query Syntax (`ByStatusQuerySyntax`):**
-```csharp
-(from o in source
- group o by o.Status.ToString() into g
- orderby g.Sum(x => x.Total) descending
- select new GroupSummary(g.Key, g.Count(), g.Sum(x => x.Total)))
-.ToList();
-```
-
-### Вимірювання часу (Stopwatch) на 100 000 записах: вплив `ToList()`
-Виміряно час виконання запиту з вибіркою перших 100 елементів (`Take(100)`), що задовольняють умову фільтрації, на 100 000 згенерованих об'єктів `Order`:
-- **Команда для запуску:** `dotnet run --project src/Cli -f net10.0 -- benchmark`
-
-**Результати вимірювання:**
-- **Без `ToList` у середині ланцюжка:** ~0–1 мс (~2 358 тіків).
-- **З проміжним `ToList()` перед `Take(100)`:** ~17 мс (~176 957 тіків).
-- **Прискорення:** варіант без проміжного `ToList` швидший у **~75 разів**.
+- `dotnet run --project src/Cli -f net10.0 -- report-join` - GroupJoin двох колекцій (Клієнти та Замовлення).
+- `dotnet run --project src/Cli -f net10.0 -- benchmark` - бенчмарк Stopwatch впливу проміжного `ToList()`.
