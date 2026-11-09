@@ -1,3 +1,3 @@
-﻿namespace Core.Dto;
+namespace Core.Dto;
 
-public record ProductDto(string Id, string Name, decimal Price) :  ImportRowDto(Id);
+public record ProductDto(string Id, string Name, decimal Price) : ImportRowDto(Id);
