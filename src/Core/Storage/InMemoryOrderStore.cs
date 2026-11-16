@@ -1,12 +1,19 @@
-﻿using Core.Abstractions;
+using System.Collections.Concurrent;
+using Core.Abstractions;
 using Core.Domain;
 
 namespace Core.Storage;
 
-public sealed class InMemoryOrderStore(IEnumerable<Order>? seed = null) : IOrderStore 
+public sealed class InMemoryOrderStore : IOrderStore 
 {
-    private readonly Dictionary<string, Order> _items = 
-        (seed ?? []).ToDictionary(p => p.Id, StringComparer.OrdinalIgnoreCase);
+    private readonly ConcurrentDictionary<string, Order> _items;
+
+    public InMemoryOrderStore(IEnumerable<Order>? seed = null)
+    {
+        _items = new ConcurrentDictionary<string, Order>(
+            (seed ?? []).ToDictionary(p => p.Id, p => p, StringComparer.OrdinalIgnoreCase),
+            StringComparer.OrdinalIgnoreCase);
+    }
     
     public IReadOnlyList<Order> List() => _items.Values.ToList();
 
@@ -19,8 +26,11 @@ public sealed class InMemoryOrderStore(IEnumerable<Order>? seed = null) : IOrder
             throw new InvalidOperationException($"Запис з id={item.Id} уже існує.");
     }
 
-    public void Update(Order item) => _items[item.Id] = item;
+    public void Update(Order item)
+    {
+        ArgumentNullException.ThrowIfNull(item);
+        _items[item.Id] = item;
+    }
 
-    public bool Remove(string id) => _items.Remove(id);
+    public bool Remove(string id) => _items.TryRemove(id, out _);
 }
-

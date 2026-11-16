@@ -7,25 +7,28 @@ public sealed class Order
     private readonly List<OrderLine> _lines = [];
     public string Id { get; }
     public string CustomerId { get; }
+    public string Customer => CustomerId;
+    public DateTime CreatedAt { get; }
     public OrderStatus Status { get; private set; } = OrderStatus.Draft;
     
     public IReadOnlyList<OrderLine> Lines => _lines.AsReadOnly();
     public decimal Total => _lines.Sum(line => line.Subtotal);
     
-    private Order(string id, string customerId)
+    private Order(string id, string customerId, DateTime? createdAt = null)
     {
         Id = id;
         CustomerId = customerId;
+        CreatedAt = createdAt ?? DateTime.UtcNow;
     }
 
-    public static Order Create(string id, string customerId)
+    public static Order Create(string id, string customerId, DateTime? createdAt = null)
     {
         if (string.IsNullOrWhiteSpace(id)) 
             throw new ArgumentException("Ідентифікатор замовлення не може бути порожнім", nameof(id));
         if (string.IsNullOrWhiteSpace(customerId)) 
             throw new ArgumentException("Ідентифікатор клієнта не може бути порожнім", nameof(customerId));
 
-        return new Order(id.Trim(), customerId.Trim());
+        return new Order(id.Trim(), customerId.Trim(), createdAt);
     }
 
     public void AddLine(string productId, string name, decimal price, int quantity)

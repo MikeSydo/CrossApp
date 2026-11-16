@@ -1,0 +1,110 @@
+@Api_HostAddress = http://localhost:5080
+
+### Health check
+GET {{Api_HostAddress}}/health
+Accept: application/json
+
+### Get all orders (with pagination and search)
+GET {{Api_HostAddress}}/api/orders?page=1&pageSize=5&search=
+Accept: application/json
+
+### 1. Create order (POST)
+# @name createOrder
+POST {{Api_HostAddress}}/api/orders
+Content-Type: application/json
+
+{
+  "customer": "C-001",
+  "lines": [
+    {
+      "productId": "P-001",
+      "name": "Клавіатура",
+      "price": 850.00,
+      "quantity": 2
+    },
+    {
+      "productId": "P-002",
+      "name": "Миша",
+      "price": 420.00,
+      "quantity": 1
+    }
+  ]
+}
+
+### 2. Read created order by id (GET)
+GET {{Api_HostAddress}}/api/orders/O-001
+Accept: application/json
+
+### 3. Get order total
+GET {{Api_HostAddress}}/api/orders/O-001/total
+Accept: application/json
+
+### 4. Update order (PUT)
+PUT {{Api_HostAddress}}/api/orders/O-001
+Content-Type: application/json
+
+{
+  "customer": "C-001",
+  "lines": [
+    {
+      "productId": "P-004",
+      "name": "USB-кабель подовжений",
+      "price": 250.00,
+      "quantity": 3
+    }
+  ]
+}
+
+### 5. Delete order (DELETE)
+DELETE {{Api_HostAddress}}/api/orders/O-001
+
+### 6. Verify deleted order returns 404
+GET {{Api_HostAddress}}/api/orders/O-001
+Accept: application/json
+
+### 7. Validation error: empty customer and empty lines (400 Bad Request via FluentValidation)
+POST {{Api_HostAddress}}/api/orders
+Content-Type: application/json
+
+{
+  "customer": "",
+  "lines": []
+}
+
+### 8. Validation error: negative price and non-positive quantity (400 Bad Request via FluentValidation)
+POST {{Api_HostAddress}}/api/orders
+Content-Type: application/json
+
+{
+  "customer": "C-001",
+  "lines": [
+    {
+      "productId": "P-005",
+      "name": "Навушники",
+      "price": -500,
+      "quantity": 0
+    }
+  ]
+}
+
+### 9. Domain error: duplicate product in order lines (409 Conflict via DomainExceptionHandler)
+POST {{Api_HostAddress}}/api/orders
+Content-Type: application/json
+
+{
+  "customer": "C-001",
+  "lines": [
+    {
+      "productId": "P-001",
+      "name": "Клавіатура",
+      "price": 850.00,
+      "quantity": 1
+    },
+    {
+      "productId": "P-001",
+      "name": "Клавіатура друга",
+      "price": 850.00,
+      "quantity": 1
+    }
+  ]
+}

@@ -7,8 +7,89 @@
 
 - `src/Core` — доменна модель, DTO, імпортери, сервіси та сховища;
 - `src/Cli` — консольний запуск і конфігурація;
-- `tests/Core.Tests` — unit-тести;
+- `src/Api` — Minimal API HTTP-сервіс (CRUD, валідація через FluentValidation, Scalar/OpenAPI);
+- `tests/Core.Tests` — unit-тести доменного шару;
+- `tests/Api.Tests` — інтеграційні тести API на `WebApplicationFactory`;
 - `data` — локальні дані, які не додаються до git.
+
+## Запуск HTTP API (Minimal API)
+
+### Запуск сервера
+Сервер Minimal API налаштований на порт `5080`:
+
+```powershell
+dotnet run --project src\Api --urls http://localhost:5080
+```
+
+Або використовуючи профіль запуску:
+```powershell
+dotnet run --project src\Api
+```
+
+### Документація та OpenAPI (Development)
+- **OpenAPI v1 JSON**: [http://localhost:5080/openapi/v1.json](http://localhost:5080/openapi/v1.json)
+- **Scalar UI**: [http://localhost:5080/scalar/v1](http://localhost:5080/scalar/v1)
+
+### Приклади запитів через curl
+
+1. Отримання списку замовлень із пагінацією та пошуком (GET):
+```bash
+curl -i "http://localhost:5080/api/orders?page=1&pageSize=5&search=Клавіатура"
+```
+*Повертає `{ "items": [...], "total": 18 }`.*
+
+2. Створення нового замовлення (POST):
+```bash
+curl -i -X POST http://localhost:5080/api/orders \
+  -H "Content-Type: application/json" \
+  -d '{"customer":"C-001","lines":[{"productId":"P-001","name":"Клавіатура","price":850,"quantity":2}]}'
+```
+*Повертає `HTTP/1.1 201 Created` із заголовком `Location: /api/orders/{id}`.*
+
+3. Отримання замовлення за ідентифікатором (GET):
+```bash
+curl -i http://localhost:5080/api/orders/O-001
+```
+
+4. Отримання загальної вартості замовлення (GET /{id}/total):
+```bash
+curl -i http://localhost:5080/api/orders/O-001/total
+```
+
+5. Повне оновлення замовлення (PUT):
+```bash
+curl -i -X PUT http://localhost:5080/api/orders/O-001 \
+  -H "Content-Type: application/json" \
+  -d '{"customer":"C-001","lines":[{"productId":"P-004","name":"USB-кабель","price":200,"quantity":3}]}'
+```
+
+6. Видалення замовлення (DELETE):
+```bash
+curl -i -X DELETE http://localhost:5080/api/orders/O-001
+```
+*Повертає `HTTP/1.1 204 No Content`.*
+
+7. Перевірка видаленого ресурсу (GET після DELETE):
+```bash
+curl -i http://localhost:5080/api/orders/O-001
+```
+*Повертає `HTTP/1.1 404 Not Found`.*
+
+8. Помилка валідації вхідних даних (POST з помилками валідації FluentValidation):
+```bash
+curl -i -X POST http://localhost:5080/api/orders \
+  -H "Content-Type: application/json" \
+  -d '{"customer":"","lines":[]}'
+```
+*Повертає `HTTP/1.1 400 Bad Request` у форматі ProblemDetails (RFC 9457) зі словником помилок у полі `errors`.*
+
+9. Доменний конфлікт (POST з дубльованим товаром у рядках):
+```bash
+curl -i -X POST http://localhost:5080/api/orders \
+  -H "Content-Type: application/json" \
+  -d '{"customer":"C-001","lines":[{"productId":"P-001","name":"A","price":100,"quantity":1},{"productId":"P-001","name":"B","price":100,"quantity":1}]}'
+```
+*Повертає `HTTP/1.1 409 Conflict` через `DomainExceptionHandler`.*
 
 ## Порядок завантаження конфігурацій:
 
@@ -164,7 +245,7 @@ $env:CROSSAPP_Integration__ApiKey = "<локальне-значення>"
 
 ```powershell
 dotnet build CrossApp.sln
-dotnet test tests\Core.Tests\Core.Tests.csproj
+dotnet test
 ```
 
 ## Публікація
