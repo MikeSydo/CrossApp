@@ -6,11 +6,79 @@
 ## Структура
 
 - `src/Core` — доменна модель, DTO, імпортери, сервіси та сховища;
+- `src/Infrastructure` — шар доступу до даних на EF Core: `AppDbContext`, persistence-моделі (`OrderRow`, `OrderLineRow`), `EfOrderStore`, міграції;
 - `src/Cli` — консольний запуск і конфігурація;
-- `src/Api` — Minimal API HTTP-сервіс (CRUD, валідація через FluentValidation, Scalar/OpenAPI);
+- `src/Api` — Minimal API HTTP-сервіс (CRUD, валідація через FluentValidation, Scalar/OpenAPI, DI);
 - `tests/Core.Tests` — unit-тести доменного шару;
 - `tests/Api.Tests` — інтеграційні тести API на `WebApplicationFactory`;
 - `data` — локальні дані, які не додаються до git.
+
+## База даних SQLite та Entity Framework Core (Лабораторна 11)
+
+Зберігання замовлень реалізовано через Entity Framework Core та SQLite. Доменні сутності не залежать від EF Core; мапінг здійснюється між доменними класами та persistence-моделями `OrderRow` і `OrderLineRow` (зв'язок 1:N з каскадним видаленням).
+
+### Рядок підключення (`ConnectionStrings:AppDb`)
+
+За замовчуванням конфігурація задається у `src/Api/appsettings.json`:
+```json
+{
+  "ConnectionStrings": {
+    "AppDb": "Data Source=data/app.db"
+  }
+}
+```
+Відносний шлях автоматично перетворюється в абсолютний відносно `ContentRootPath` проєкту `Api`, а каталог для файлу бази (`data/`) створюється автоматично.
+
+За потреби рядок підключення можна перекрити через User Secrets (для `src/Api`):
+```powershell
+dotnet user-secrets init --project src\Api
+dotnet user-secrets set "ConnectionStrings:AppDb" "Data Source=data/app.db" --project src\Api
+```
+
+### Команди міграцій EF Core
+
+Усі команди виконуються з кореня репозиторію із зазначенням проєкту інфраструктури (`--project src\Infrastructure`) та точки входу API (`--startup-project src\Api`):
+
+1. **Створення нової міграції:**
+   ```powershell
+   dotnet ef migrations add <НазваМіграції> --project src\Infrastructure --startup-project src\Api
+   ```
+   *(Наприклад: `dotnet ef migrations add InitialCreate --project src\Infrastructure --startup-project src\Api`)*
+
+2. **Застосування міграцій до бази даних:**
+   ```powershell
+   dotnet ef database update --project src\Infrastructure --startup-project src\Api
+   ```
+
+3. **Перегляд списку міграцій:**
+   ```powershell
+   dotnet ef migrations list --project src\Infrastructure --startup-project src\Api
+   ```
+
+4. **Видалення останньої міграції** (до застосування):
+   ```powershell
+   dotnet ef migrations remove --project src\Infrastructure --startup-project src\Api
+   ```
+
+5. **Генерація SQL-скрипта міграцій:**
+   ```powershell
+   dotnet ef migrations script --project src\Infrastructure --startup-project src\Api
+   ```
+
+### Як скинути базу даних (Reset DB)
+
+- **Спосіб 1 — командами dotnet-ef:**
+  ```powershell
+  dotnet ef database drop --project src\Infrastructure --startup-project src\Api --force
+  dotnet ef database update --project src\Infrastructure --startup-project src\Api
+  ```
+
+- **Спосіб 2 — ручне видалення файлу:**
+  Видаліть файл `src/Api/data/app.db` (а також супутні `app.db-shm`, `app.db-wal`, якщо вони існують), після чого застосуйте міграції:
+  ```powershell
+  dotnet ef database update --project src\Infrastructure --startup-project src\Api
+  ```
+  *(Або просто запустіть `Api` у режимі Development — міграції застосуються автоматично під час старту)*.
 
 ## Запуск HTTP API (Minimal API)
 
